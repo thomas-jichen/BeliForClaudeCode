@@ -4,3 +4,4 @@ web/dist/
 .DS_Store
 .claude/
 beli-claude-code-redesign/
+.gitignore
