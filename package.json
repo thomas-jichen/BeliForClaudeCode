@@ -1,0 +1,33 @@
+{
+  "name": "promptly",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Beli/Strava for Claude Code — auto-share your coding sessions as funny social posts.",
+  "bin": {
+    "promptly": "src/cli/promptly.ts"
+  },
+  "scripts": {
+    "init": "node src/cli/promptly.ts init",
+    "serve": "node src/cli/promptly.ts serve",
+    "server": "node src/server/index.ts",
+    "build:web": "vite build web",
+    "dev:web": "vite web",
+    "dev": "npm run build:web && npm run server",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}
