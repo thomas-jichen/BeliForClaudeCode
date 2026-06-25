@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import type { Post, Profile as ProfileT } from "../types.ts";
 import { api } from "../api.ts";
 import { PostCard, renderAvatar } from "./PostCard.tsx";
-import { fmtTokens } from "../format.ts";
+import { fmtCost, fmtDuration, fmtTokens } from "../format.ts";
 
 const PRESETS = [
   { label: "Everything", value: 0 },
@@ -12,8 +12,26 @@ const PRESETS = [
   { label: "50M+", value: 50_000_000 },
 ];
 
-export function Profile() {
-  const [profile, setProfile] = useState<ProfileT | null>(null);
+const ACHIEVEMENTS = [
+  { label: "Token Tycoon", dot: "#D97757" },
+  { label: "Subagent Whisperer", dot: "#A89A86" },
+  { label: "Marathoner", dot: "#7E9079" },
+  { label: "Night Owl", dot: "#9A8F7C" },
+  { label: "Cache Freeloader", dot: "#B5654A" },
+  { label: "The Closer", dot: "#C2542E" },
+];
+
+export function Profile({
+  profile,
+  setProfile,
+  posts,
+  onRefresh,
+}: {
+  profile: ProfileT | null;
+  setProfile: (p: ProfileT) => void;
+  posts: Post[] | null;
+  onRefresh: () => void;
+}) {
   const [handle, setHandle] = useState("");
   const [avatar, setAvatar] = useState("");
   const [threshold, setThreshold] = useState(1_000_000);
@@ -36,17 +54,16 @@ export function Profile() {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api.profile().then((p) => {
-      setProfile(p);
-      setHandle(p.handle);
-      setAvatar(p.avatar);
-      setThreshold(p.autoShareMinTokens);
-      setTempName(p.name || "Creative Technologist");
-      setTempHandle(p.handle);
-      setTempAvatar(p.avatar);
-    });
+    if (profile) {
+      setHandle(profile.handle);
+      setAvatar(profile.avatar);
+      setThreshold(profile.autoShareMinTokens);
+      setTempName(profile.name || "Creative Technologist");
+      setTempHandle(profile.handle);
+      setTempAvatar(profile.avatar);
+    }
     api.drafts().then(setDrafts).catch(() => setDrafts([]));
-  }, []);
+  }, [profile]);
 
   // Autofocus effects
   useEffect(() => {
@@ -103,6 +120,7 @@ export function Profile() {
       setProfile(updated);
       setTempName(updated.name || "Creative Technologist");
       showSavedIndicator();
+      onRefresh();
     }
     setIsEditingName(false);
   };
@@ -121,6 +139,7 @@ export function Profile() {
       setHandle(updated.handle);
       setTempHandle(updated.handle);
       showSavedIndicator();
+      onRefresh();
     }
     setIsEditingHandle(false);
   };
@@ -134,6 +153,7 @@ export function Profile() {
       setAvatar(updated.avatar);
       setTempAvatar(updated.avatar);
       showSavedIndicator();
+      onRefresh();
     }
     setShowAvatarEdit(false);
   };
@@ -145,12 +165,14 @@ export function Profile() {
       setProfile(updated);
       setThreshold(updated.autoShareMinTokens);
       showSavedIndicator();
+      onRefresh();
     }
   };
 
   const publish = async (id: string) => {
     await api.publish(id);
     setDrafts((d) => d.filter((p) => p.id !== id));
+    onRefresh();
   };
 
   const handleNameKeyDown = (e: React.KeyboardEvent) => {
@@ -182,8 +204,17 @@ export function Profile() {
 
   if (!profile) return <div className="feed-empty">loading…</div>;
 
+  // Calculate dynamic summary metrics based on posts
+  const userPosts = posts ? posts.filter((p) => p.handle === profile.handle && !p.isDraft) : [];
+  
+  // Total Burn: base seed + dynamic posts
   const totalDraftsTokens = drafts.reduce((acc, p) => acc + (p.stats?.totalTokens || 0), 0);
-  const totalBurned = 124_800_000 + totalDraftsTokens;
+  const userDynamicBurn = userPosts.reduce((acc, p) => acc + (p.stats?.totalTokens || 0), 0);
+  const totalBurned = 124_800_000 + userDynamicBurn + totalDraftsTokens;
+
+  // Average score
+  const totalScore = userPosts.reduce((acc, p) => acc + (p.score || 0), 0);
+  const avgScore = userPosts.length > 0 ? (totalScore / userPosts.length).toFixed(1) : "8.7";
 
   const heatmapDots = [];
   const cols = 24;
@@ -203,8 +234,8 @@ export function Profile() {
   }
 
   return (
-    <>
-      <div className="panel">
+    <div className="profile-panel">
+      <div className="profile-card">
         {/* Creative Technologist Profile Header */}
         <div className="profile-header">
           <div className="avatar-large-wrapper">
@@ -266,86 +297,104 @@ export function Profile() {
               <span className={`saved-note ${saved ? "show" : ""}`}>✓ saved</span>
             </div>
 
-            {isEditingHandle ? (
-              <div className="profile-handle-edit-wrapper">
-                <span className="handle-at">@</span>
-                <input
-                  ref={handleInputRef}
-                  type="text"
-                  className="profile-handle-input"
-                  value={tempHandle}
-                  onChange={(e) => setTempHandle(e.target.value.replace(/\s+/g, ""))}
-                  onBlur={handleSaveHandle}
-                  onKeyDown={handleHandleKeyDown}
-                  maxLength={30}
-                />
-              </div>
-            ) : (
-              <span
-                className="handle-tag"
-                onClick={() => setIsEditingHandle(true)}
-                title="Click to edit handle"
-              >
-                @{handle}
-              </span>
-            )}
+            <div className="profile-meta-sub">
+              {isEditingHandle ? (
+                <div className="profile-handle-edit-wrapper">
+                  <span className="handle-at">@</span>
+                  <input
+                    ref={handleInputRef}
+                    type="text"
+                    className="profile-handle-input"
+                    value={tempHandle}
+                    onChange={(e) => setTempHandle(e.target.value.replace(/\s+/g, ""))}
+                    onBlur={handleSaveHandle}
+                    onKeyDown={handleHandleKeyDown}
+                    maxLength={30}
+                  />
+                </div>
+              ) : (
+                <span
+                  className="handle-tag"
+                  onClick={() => setIsEditingHandle(true)}
+                  title="Click to edit handle"
+                >
+                  @{handle}
+                </span>
+              )}
+              <span className="profile-role-sep">·</span>
+              <span className="profile-role">Creative Technologist</span>
+            </div>
           </div>
         </div>
 
-        {/* Apple Fitness / Strava style Athlete summaries */}
+        {/* Athlete summaries */}
         <div className="profile-stats-row">
           <div className="profile-stat">
-            <span className="label">Total Burn</span>
-            <span className="value">{fmtTokens(totalBurned)}</span>
+            <span className="profile-stat-value">{fmtTokens(totalBurned)}</span>
+            <span className="profile-stat-label">Total Burn</span>
           </div>
           <div className="profile-stat">
-            <span className="label">Active Streak</span>
-            <span className="value">14 days</span>
+            <span className="profile-stat-value">14<span>d</span></span>
+            <span className="profile-stat-label">Streak</span>
           </div>
           <div className="profile-stat">
-            <span className="label">Top Model</span>
-            <span className="value">Sonnet 4</span>
+            <span className="profile-stat-value" style={{ color: "var(--accent-orange)" }}>{avgScore}</span>
+            <span className="profile-stat-label">Avg Score</span>
           </div>
           <div className="profile-stat">
-            <span className="label">Shipping Rate</span>
-            <span className="value">4.2/wk</span>
+            <span className="profile-stat-value">4.2<span>/wk</span></span>
+            <span className="profile-stat-label">Ship Rate</span>
           </div>
         </div>
 
-        {/* Shipping Activity Heatmap Graph */}
+        {/* CSS Grid Heatmap */}
         <div className="heatmap-container">
-          <div className="heatmap-title">Shipping Intensity</div>
-          <svg viewBox="0 0 470 96" width="100%" height="86" style={{ overflow: "visible" }}>
+          <div className="heatmap-header">
+            <div className="heatmap-title">Shipping Intensity</div>
+            <div className="heatmap-subtitle">last 24 weeks</div>
+          </div>
+          <div className="heatmap-grid">
             {heatmapDots.map((dot, i) => {
-              let fill = "rgba(255, 255, 255, 0.03)";
-              if (dot.level === 1) fill = "rgba(255, 255, 255, 0.12)";
-              if (dot.level === 2) fill = "rgba(255, 255, 255, 0.35)";
-              if (dot.level === 3) fill = "rgba(255, 255, 255, 0.65)";
-              if (dot.level === 4) fill = "var(--accent)";
+              let fill = "rgba(0, 0, 0, 0.04)";
+              if (dot.level === 1) fill = "rgba(217, 119, 87, 0.26)";
+              if (dot.level === 2) fill = "rgba(217, 119, 87, 0.5)";
+              if (dot.level === 3) fill = "rgba(217, 119, 87, 0.82)";
+              if (dot.level === 4) fill = "rgba(194, 84, 46, 0.92)";
 
-              const x = dot.c * 19 + 8;
-              const y = dot.r * 18 + 8;
               return (
-                <circle
-                  key={i}
-                  cx={x}
-                  cy={y}
-                  r="5.5"
-                  fill={fill}
+                <div 
+                  key={i} 
+                  className="heatmap-cell" 
+                  style={{ backgroundColor: fill }} 
+                  title={`Level ${dot.level}`}
                 />
               );
             })}
-          </svg>
+          </div>
+        </div>
+
+        {/* Achievements list */}
+        <div className="achievements-container">
+          <div className="achievements-title">Achievements</div>
+          <div className="badges-list">
+            {ACHIEVEMENTS.map((b) => (
+              <div className="badge-item" key={b.label}>
+                <span className="badge-dot" style={{ backgroundColor: b.dot }} />
+                {b.label}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Auto-share threshold config section */}
-        <div className="field presets-container">
+        <div className="presets-field">
           <label>Auto-share threshold</label>
-          <div className="row" style={{ alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          <div className="presets-row">
             <input
               type="number"
               min={0}
               step={100000}
+              className="presets-input"
               value={threshold}
               onChange={(e) => setThreshold(Math.max(0, Number(e.target.value) || 0))}
               onBlur={() => handleSaveThreshold(threshold)}
@@ -354,13 +403,12 @@ export function Profile() {
                   handleSaveThreshold(threshold);
                 }
               }}
-              style={{ maxWidth: 140 }}
             />
-            <div className="tabs">
+            <div className="presets-tabs">
               {PRESETS.map((p) => (
                 <button
                   key={p.value}
-                  className={`tab ${threshold === p.value ? "active" : ""}`}
+                  className={`presets-tab-btn ${threshold === p.value ? "active" : ""}`}
                   onClick={() => {
                     setThreshold(p.value);
                     handleSaveThreshold(p.value);
@@ -371,7 +419,7 @@ export function Profile() {
               ))}
             </div>
           </div>
-          <div className="hint">
+          <div className="presets-hint">
             {threshold === 0 ? (
               <>Every session auto-posts to the feed.</>
             ) : (
@@ -385,25 +433,45 @@ export function Profile() {
         </div>
       </div>
 
+      {/* User's own active sessions */}
+      {userPosts.length > 0 && (
+        <div>
+          <div className="profile-sessions-header">Your sessions</div>
+          <div className="feed">
+            {userPosts.map((p, i) => (
+              <PostCard 
+                key={p.id} 
+                post={p} 
+                index={i} 
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Drafts */}
       {drafts.length > 0 && (
         <>
           <div className="section-title">Drafts · {drafts.length}</div>
           <div className="feed">
-            {(() => {
-              const maxDraftTokens = drafts.reduce((max, p) => Math.max(max, p.stats?.totalTokens || 0), 0);
-              return drafts.map((p, i) => (
+            {drafts.map((p, i) => (
+              <div key={p.id}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", padding: "0 4px" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "7px", fontSize: "12px", fontWeight: 600, color: "var(--text-muted)" }}>
+                    <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "var(--text-light)" }}></span>
+                    Draft · below your auto-share threshold
+                  </span>
+                  <button className="publish-btn" onClick={() => publish(p.id)}>Publish</button>
+                </div>
                 <PostCard 
-                  key={p.id} 
                   post={p} 
                   index={i} 
-                  onPublish={publish} 
-                  isPersonalBest={p.stats?.totalTokens > 0 && p.stats?.totalTokens === maxDraftTokens}
                 />
-              ));
-            })()}
+              </div>
+            ))}
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }

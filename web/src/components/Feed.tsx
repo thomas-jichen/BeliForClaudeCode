@@ -1,39 +1,58 @@
-import { useEffect, useState } from "react";
-import type { Post } from "../types.ts";
-import { api } from "../api.ts";
+import type { Post, Profile } from "../types.ts";
 import { PostCard } from "./PostCard.tsx";
 
-export function Feed() {
-  const [posts, setPosts] = useState<Post[] | null>(null);
+const FRIENDS_HANDLES = new Set(["vivan", "priya", "marco_dev", "neon_owl", "priya.codes"]);
 
-  useEffect(() => {
-    api.feed().then(setPosts).catch(() => setPosts([]));
-  }, []);
-
+export function Feed({
+  posts,
+  profile,
+  scope,
+  onRefresh,
+}: {
+  posts: Post[] | null;
+  profile: Profile | null;
+  scope: "friends" | "global";
+  onRefresh: () => void;
+}) {
   if (posts === null) {
     return <div className="feed-empty">loading the feed…</div>;
   }
-  if (posts.length === 0) {
+
+  const userHandle = profile?.handle || "yuki_dev";
+  
+  // Filter out drafts from the main feed! Drafts are only shown on the Profile tab.
+  const activePosts = posts.filter(p => !p.isDraft);
+
+  const filteredPosts = activePosts.filter((p) => {
+    if (scope === "friends") {
+      return p.handle === userHandle || FRIENDS_HANDLES.has(p.handle);
+    }
+    return true; // Global shows all active posts
+  });
+
+  if (filteredPosts.length === 0) {
     return (
       <div className="feed-empty">
         <div className="big">No posts yet 🌱</div>
-        Finish a Claude Code session and your card shows up here automatically.
+        {scope === "friends" 
+          ? "None of your friends have shared sessions recently. Check the Global tab!" 
+          : "Finish a Claude Code session and your card shows up here automatically."
+        }
       </div>
     );
   }
+
   const maxTokensByHandle: Record<string, number> = {};
-  if (posts) {
-    posts.forEach((p) => {
-      const tokens = p.stats?.totalTokens || 0;
-      if (!maxTokensByHandle[p.handle] || tokens > maxTokensByHandle[p.handle]) {
-        maxTokensByHandle[p.handle] = tokens;
-      }
-    });
-  }
+  posts.forEach((p) => {
+    const tokens = p.stats?.totalTokens || 0;
+    if (!maxTokensByHandle[p.handle] || tokens > maxTokensByHandle[p.handle]) {
+      maxTokensByHandle[p.handle] = tokens;
+    }
+  });
 
   return (
     <div className="feed">
-      {posts.map((p, i) => (
+      {filteredPosts.map((p, i) => (
         <PostCard 
           key={p.id} 
           post={p} 

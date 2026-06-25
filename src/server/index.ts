@@ -109,8 +109,20 @@ export function createApp() {
 
   // Static web UI (built by Vite). SPA fallback to index.html.
   if (existsSync(WEB_DIST)) {
-    app.use(express.static(WEB_DIST));
+    app.use(express.static(WEB_DIST, {
+      etag: false,
+      maxAge: 0,
+      lastModified: false,
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    }));
     app.get("*", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(join(WEB_DIST, "index.html"));
     });
   } else {

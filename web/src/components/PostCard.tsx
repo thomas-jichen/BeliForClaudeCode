@@ -1,25 +1,25 @@
 import { useState, useEffect } from "react";
 import type { Post, Comment } from "../types.ts";
 import { api } from "../api.ts";
-import { timeAgo, fmtCost, fmtTokens, fmtDuration } from "../format.ts";
+import { timeAgo, fmtCost, fmtDuration } from "../format.ts";
 
 interface CulturalReact {
   dbKey: string;
   label: string;
-  icon: string;
+  color: string;
 }
 
 const CULTURAL_REACTIONS: CulturalReact[] = [
-  { dbKey: "Ship", label: "Ship", icon: "⚡" },
-  { dbKey: "Cooked", label: "Cooked", icon: "😭" },
-  { dbKey: "OneShot", label: "One-Shot", icon: "🎯" },
-  { dbKey: "CacheGod", label: "Cache God", icon: "🧊" },
-  { dbKey: "Forked", label: "Forked", icon: "🍴" },
-  { dbKey: "CleanRun", label: "Clean Run", icon: "🟢" },
-  { dbKey: "Burned", label: "Burned", icon: "💸" },
-  { dbKey: "Refactor", label: "Refactor", icon: "🛠️" },
-  { dbKey: "Agentmax", label: "Agentmaxxing", icon: "🤖" },
-  { dbKey: "Grass", label: "Touch Grass", icon: "🌱" }
+  { dbKey: "Ship", label: "Ship", color: "#C2542E" },
+  { dbKey: "Cooked", label: "Cooked", color: "#B5654A" },
+  { dbKey: "OneShot", label: "One-Shot", color: "#7E9079" },
+  { dbKey: "CacheGod", label: "Cache God", color: "#9A8F7C" },
+  { dbKey: "Forked", label: "Forked", color: "#8A8175" },
+  { dbKey: "CleanRun", label: "Clean Run", color: "#7E9079" },
+  { dbKey: "Burned", label: "Burned", color: "#D97757" },
+  { dbKey: "Refactor", label: "Refactor", color: "#9A8F7C" },
+  { dbKey: "Agentmax", label: "Agentmaxxing", color: "#B5654A" },
+  { dbKey: "Grass", label: "Touch Grass", color: "#7E9079" }
 ];
 
 const DB_REACTION_MAP: Record<string, string> = {
@@ -30,74 +30,6 @@ const DB_REACTION_MAP: Record<string, string> = {
   "🤖": "Agentmax",
   "💀": "Grass",
   "👏": "CleanRun"
-};
-
-const REACTION_ICONS: Record<string, React.ReactNode> = {
-  Ship: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  ),
-  Cooked: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2c-.5 0-1 .5-1 1v2c0 .5.5 1 1 1s1-.5 1-1V3c0-.5-.5-1-1-1zM6.3 5.3c-.4-.4-1-.4-1.4 0s-.4 1 0 1.4l1.4 1.4c.4.4 1 .4 1.4 0s.4-1 0-1.4L6.3 5.3zm11.4 0l-1.4 1.4c-.4.4-.4 1 0 1.4s1 .4 1.4 0l1.4-1.4c.4-.4.4-1 0-1.4s-1-.4-1.4 0zM12 7c-2.8 0-5 2.2-5 5v5c0 1.7 1.3 3 3 3h4c1.7 0 3-1.3 3-3v-5c0-2.8-2.2-5-5-5z" />
-    </svg>
-  ),
-  OneShot: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="5" />
-      <circle cx="12" cy="12" r="1.5" />
-    </svg>
-  ),
-  CacheGod: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-      <line x1="12" y1="22.08" x2="12" y2="12" />
-    </svg>
-  ),
-  Forked: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="18" cy="18" r="2.5" />
-      <circle cx="6" cy="6" r="2.5" />
-      <circle cx="6" cy="18" r="2.5" />
-      <path d="M18 15V9a3 3 0 0 0-3-3H9" />
-      <line x1="6" y1="8.5" x2="6" y2="15.5" />
-    </svg>
-  ),
-  CleanRun: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="15 10 11 14 9 12" />
-    </svg>
-  ),
-  Burned: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="1" x2="12" y2="23" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  ),
-  Refactor: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-    </svg>
-  ),
-  Agentmax: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="5" y="5" width="14" height="14" rx="2" />
-      <rect x="10" y="10" width="4" height="4" rx="0.5" />
-      <line x1="10" y1="1" x2="10" y2="5" />
-      <line x1="14" y1="1" x2="14" y2="5" />
-      <line x1="10" y1="19" x2="10" y2="23" />
-      <line x1="14" y1="19" x2="14" y2="23" />
-    </svg>
-  ),
-  Grass: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 22c1.25-6.7 5.85-11.85 12-14M14 8c-3.1 0-7.3 1.9-10 6M14 8c2.9-2.9 6.2-4.9 8-6-1.1 1.8-3.1 5.1-6 8M14 8a3 3 0 1 0 6 0 3 3 0 1 0-6 0" />
-    </svg>
-  )
 };
 
 export function renderAvatar(avatar: string, handle: string) {
@@ -115,10 +47,9 @@ export function renderAvatar(avatar: string, handle: string) {
   for (let i = 0; i < handle.length; i++) {
     hash = handle.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const color1 = `hsl(${Math.abs(hash) % 360}, 15%, 22%)`;
-  const color2 = `hsl(${(Math.abs(hash) + 120) % 360}, 10%, 12%)`;
+  const hue = 24 + (Math.abs(hash) % 26);
   const style = {
-    background: `linear-gradient(135deg, ${color1}, ${color2})`
+    background: `linear-gradient(150deg, hsl(${hue},16%,24%), hsl(${hue},18%,13%))`
   };
   
   return (
@@ -142,12 +73,11 @@ function fmtModelElite(model: string): string {
   return "Sonnet 4";
 }
 
-function getCreditScale(tokens: number) {
-  if (tokens >= 100_000_000) return "scale-insane";
-  if (tokens >= 10_000_000) return "scale-power";
-  if (tokens >= 1_000_000) return "scale-serious";
-  if (tokens >= 100_000) return "scale-casual";
-  return "scale-tiny";
+function splitTokens(n: number) {
+  if (n >= 1_000_000_000) return { main: (n / 1_000_000_000).toFixed(1), unit: "B" };
+  if (n >= 1_000_000) return { main: (n / 1_000_000).toFixed(1), unit: "M" };
+  if (n >= 1_000) return { main: (n / 1_000).toFixed(1), unit: "k" };
+  return { main: String(n), unit: "" };
 }
 
 export function PostCard({
@@ -245,6 +175,15 @@ export function PostCard({
   if (s.bashCommands > 0) statParts.push(`${s.bashCommands} CLI command${s.bashCommands === 1 ? "" : "s"}`);
   if (s.cacheHitRatio > 0) statParts.push(`${Math.round(s.cacheHitRatio * 100)}% cache`);
 
+  const { main, unit } = splitTokens(s.totalTokens);
+
+  const score = post.score ?? 0;
+  const scoreBg = score >= 7
+    ? "linear-gradient(150deg, rgba(217,119,87,0.96), rgba(194,84,46,0.96))"
+    : score >= 5
+    ? "linear-gradient(150deg, rgba(184,150,110,0.96), rgba(150,118,84,0.96))"
+    : "linear-gradient(150deg, rgba(150,143,124,0.95), rgba(110,103,90,0.95))";
+
   return (
     <article className="card" style={{ animationDelay: `${Math.min(index, 8) * 0.06}s` }}>
       <div className="card-head">
@@ -260,9 +199,9 @@ export function PostCard({
           </div>
         </div>
         <div className="card-head-right">
-          <span className="duration">{fmtDuration(s.durationMs)}</span>
-          <span className="sep">·</span>
-          <span className="model">{fmtModelElite(s.primaryModel)}</span>
+          <span>{s.durationMs ? fmtDuration(s.durationMs) : "0m"}</span>
+          <br />
+          <span>{fmtModelElite(s.primaryModel)}</span>
         </div>
       </div>
 
@@ -272,13 +211,14 @@ export function PostCard({
 
       {/* GIANT CENTERPIECE TOKEN DISPLAY */}
       <div className="hero-credits">
-        <span className={`value ${getCreditScale(s.totalTokens)}`}>
-          {fmtTokens(s.totalTokens)}
-          <span className="unit">credits</span>
-          {isPersonalBest && (
-            <span className="pr-dot" />
-          )}
-        </span>
+        <div className="value">
+          {main}
+          <span className="unit">{unit}</span>
+        </div>
+        <div className="credits-label-container">
+          <span className="credits-label">credits burned</span>
+          {isPersonalBest && <span className="pr-dot" />}
+        </div>
       </div>
 
       {/* COMPACT FLOWING STATS */}
@@ -286,17 +226,17 @@ export function PostCard({
         <div className="flowing-stats">
           {statParts.map((part, i) => (
             <span key={i}>
-              {part}
+              <span>{part}</span>
               {i < statParts.length - 1 && <span className="sep"> · </span>}
             </span>
           ))}
         </div>
       )}
 
-      {/* SESSION SUMMARY / DESCRIPTION */}
-      <div className="card-content-block">
-        <h3 className="title">{post.title}</h3>
-        {post.review && <p className="review">“{post.review}”</p>}
+      {/* UNIFIED STORY / SUMMARY & ROAST */}
+      <div className="session-story">
+        <span className="session-title">{post.title}</span>
+        {post.review && <span className="session-roast"> — {post.review}</span>}
       </div>
 
       {/* CUSTOM MONOCHROMATIC MICRO-REACTIONS */}
@@ -312,8 +252,8 @@ export function PostCard({
               onClick={() => toggleReact(r.dbKey)}
               title={r.label}
             >
-              {REACTION_ICONS[r.dbKey]}
-              <span>{count}</span>
+              <span className="react-dot" style={{ backgroundColor: r.color }} />
+              <span>{r.label} {count}</span>
             </button>
           );
         })}
@@ -321,7 +261,7 @@ export function PostCard({
         {/* Reaction Popover container */}
         <div className="react-palette-container">
           <button className="react-btn add-react" onClick={() => setShowPalette((v) => !v)}>
-            ＋
+            +
           </button>
           {showPalette && (
             <div className="react-palette">
@@ -331,11 +271,11 @@ export function PostCard({
                   <button 
                     key={r.dbKey} 
                     onClick={() => toggleReact(r.dbKey)}
-                    className={active ? "active" : ""}
+                    className={`react-palette-btn ${active ? "active" : ""}`}
                     title={r.label}
                   >
-                    {REACTION_ICONS[r.dbKey]}
-                    <span>{r.label.split(" ")[0]}</span>
+                    <span className="react-dot" style={{ backgroundColor: r.color }} />
+                    <span>{r.label}</span>
                   </button>
                 );
               })}
@@ -348,6 +288,10 @@ export function PostCard({
             Publish
           </button>
         )}
+
+        <div className="score-badge" style={{ background: scoreBg, marginLeft: post.isDraft ? "12px" : "auto" }}>
+          <span>{score.toFixed(1)}</span>
+        </div>
       </div>
 
       {/* Social threads comments */}
@@ -375,18 +319,21 @@ export function PostCard({
           <div className="comment-avatar">
             {renderAvatar(userProfile?.avatar || "you", userProfile?.handle || "you")}
           </div>
-          <div className="comment-input-container">
-            <input
-              type="text"
-              className="input"
-              placeholder="Add a comment..."
-              value={newCommentText}
-              onChange={(e) => setNewCommentText(e.target.value)}
-            />
-          </div>
+          <input
+            type="text"
+            placeholder="Add a comment..."
+            value={newCommentText}
+            onChange={(e) => setNewCommentText(e.target.value)}
+          />
           <button 
             type="submit" 
-            className={`comment-post-btn ${newCommentText.trim() ? "show" : ""}`}
+            className="comment-post-btn"
+            style={{
+              border: "none",
+              color: newCommentText.trim() ? "#ffffff" : "var(--text-light)",
+              background: newCommentText.trim() ? "linear-gradient(150deg, var(--accent-orange-hover), var(--accent-orange))" : "rgba(0,0,0,0.05)",
+              pointerEvents: newCommentText.trim() ? "auto" : "none"
+            }}
           >
             Post
           </button>
