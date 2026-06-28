@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import type { SessionStats, ToolCounts } from "./types.ts";
-import { costForUsage, creditsFromTokens } from "./pricing.ts";
+import { costForUsage, costBreakdown as costBuckets, costSavedByCache } from "./pricing.ts";
 import { detectRage } from "./rage.ts";
 
 const STOPWORDS = new Set([
@@ -44,9 +44,18 @@ function extractUserText(content: unknown): { text: string; toolResultOnly: bool
   return { text: text.trim(), toolResultOnly: sawToolResult && !sawText };
 }
 
-export function parseSession(transcriptPath: string): SessionStats {
+export interface ParseOptions {
+  // If provided, aggregate only messages whose timestamp is strictly later than this
+  // epoch ms. Identity fields (sessionId, cwd, gitBranch, aiTitle) are still read from
+  // the entire file. Used by the worker to make each /exit a delta since the previous
+  // /exit on the same session.
+  since?: number;
+}
+
+export function parseSession(transcriptPath: string, options: ParseOptions = {}): SessionStats {
   const raw = readFileSync(transcriptPath, "utf8");
   const lines = raw.split("\n");
+  const since = options.since ?? -Infinity;
 
   let sessionId = "";
   let cwd = "";
@@ -61,8 +70,11 @@ export function parseSession(transcriptPath: string): SessionStats {
     cacheWrite5m = 0,
     cacheWrite1h = 0;
   let costUsd = 0;
+  let savedUsd = 0;
+  const costBreakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
 
   const toolCounts: ToolCounts = {};
+  const editedFiles = new Set<string>();
   let assistantMessages = 0;
 
   const tsList: number[] = [];
@@ -86,17 +98,22 @@ export function parseSession(transcriptPath: string): SessionStats {
       continue;
     }
 
+    // Identity fields are always read — they describe the whole session, not a slice.
     if (o.sessionId && !sessionId) sessionId = o.sessionId;
     if (o.cwd && !cwd) cwd = o.cwd;
     if (o.gitBranch && !gitBranch) gitBranch = o.gitBranch;
     if (o.aiTitle) aiTitle = o.aiTitle;
 
-    if (o.timestamp) {
-      const t = Date.parse(o.timestamp);
-      if (!Number.isNaN(t)) {
-        tsList.push(t);
-        hourHist[new Date(t).getHours()]++;
-      }
+    // Watermark gate: when `since` is set, skip aggregation for anything not strictly
+    // newer. Lines without a timestamp are skipped from aggregation when filtering, since
+    // we can't place them in time (these are mostly meta/permission events that contribute
+    // nothing anyway).
+    const t = o.timestamp ? Date.parse(o.timestamp) : NaN;
+    if (since !== -Infinity && (Number.isNaN(t) || t <= since)) continue;
+
+    if (!Number.isNaN(t)) {
+      tsList.push(t);
+      hourHist[new Date(t).getHours()]++;
     }
 
     if (o.type === "assistant" && o.message) {
@@ -117,13 +134,15 @@ export function parseSession(transcriptPath: string): SessionStats {
         cacheReadTokens += cr;
         cacheWrite5m += c5;
         cacheWrite1h += c1;
-        costUsd += costForUsage(model, {
-          input: i,
-          output: out,
-          cacheRead: cr,
-          cacheWrite5m: c5,
-          cacheWrite1h: c1,
-        });
+        const usage = { input: i, output: out, cacheRead: cr, cacheWrite5m: c5, cacheWrite1h: c1 };
+        costUsd += costForUsage(model, usage);
+        const b = costBuckets(model, usage);
+        costBreakdown.input += b.input;
+        costBreakdown.output += b.output;
+        costBreakdown.cacheRead += b.cacheRead;
+        costBreakdown.cacheWrite5m += b.cacheWrite5m;
+        costBreakdown.cacheWrite1h += b.cacheWrite1h;
+        savedUsd += costSavedByCache(model, cr);
       }
 
       const content = o.message.content;
@@ -131,6 +150,10 @@ export function parseSession(transcriptPath: string): SessionStats {
         for (const block of content) {
           if (block && block.type === "tool_use" && typeof block.name === "string") {
             toolCounts[block.name] = (toolCounts[block.name] ?? 0) + 1;
+            if (block.name === "Edit" || block.name === "Write" || block.name === "MultiEdit") {
+              const p = block.input?.file_path;
+              if (typeof p === "string" && p) editedFiles.add(p);
+            }
           }
         }
       }
@@ -150,13 +173,21 @@ export function parseSession(transcriptPath: string): SessionStats {
         interruptions++;
         continue;
       }
-      // skip command wrappers / caveats from free-form prompt analysis
-      if (text.includes("<command-name>") || text.includes("<local-command-caveat>")) continue;
+      // Strip slash-command wrappers and local-command caveats — what remains is the
+      // real free-form prompt (if any). Drop the message only if nothing is left.
+      const cleaned = text
+        .replace(/<command-name>[\s\S]*?<\/command-name>/g, "")
+        .replace(/<command-message>[\s\S]*?<\/command-message>/g, "")
+        .replace(/<command-args>[\s\S]*?<\/command-args>/g, "")
+        .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
+        .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
+        .trim();
+      if (!cleaned) continue;
 
-      promptTexts.push(text);
-      if (!firstPrompt) firstPrompt = text;
+      promptTexts.push(cleaned);
+      if (!firstPrompt) firstPrompt = cleaned;
 
-      const low = text.toLowerCase();
+      const low = cleaned.toLowerCase();
       pleaseCount += (low.match(/\bplease\b/g) ?? []).length;
       thanksCount += (low.match(/\b(thanks|thank you|ty)\b/g) ?? []).length;
 
@@ -190,8 +221,15 @@ export function parseSession(transcriptPath: string): SessionStats {
   const isNightOwl = peakHour >= 23 || peakHour < 5;
 
   const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWrite5m + cacheWrite1h;
+  const paidTokens = inputTokens + outputTokens + cacheWrite5m + cacheWrite1h;
   const cacheHitRatio = inputTokens + cacheReadTokens > 0
     ? cacheReadTokens / (inputTokens + cacheReadTokens)
+    : 0;
+  // The story-grade metric: what fraction of the would-be dollar cost was eliminated
+  // by cache reads. Unlike cacheHitRatio this varies meaningfully across sessions.
+  const cacheSaveDenom = savedUsd + costUsd;
+  const cacheSaveRate = cacheSaveDenom > 0
+    ? Math.max(0, Math.min(1, savedUsd / cacheSaveDenom))
     : 0;
 
   const totalToolCalls = Object.values(toolCounts).reduce((a, b) => a + b, 0);
@@ -204,7 +242,8 @@ export function parseSession(transcriptPath: string): SessionStats {
     }
   }
   const subagents = toolCounts["Task"] ?? 0;
-  const filesEdited = (toolCounts["Edit"] ?? 0) + (toolCounts["Write"] ?? 0) + (toolCounts["MultiEdit"] ?? 0);
+  const editCallCount = (toolCounts["Edit"] ?? 0) + (toolCounts["Write"] ?? 0) + (toolCounts["MultiEdit"] ?? 0);
+  const filesEdited = editedFiles.size;
   const bashCommands = toolCounts["Bash"] ?? 0;
 
   const avgPromptLen = promptTexts.length
@@ -228,7 +267,7 @@ export function parseSession(transcriptPath: string): SessionStats {
   });
 
   const modelList = [...models.keys()];
-  let primaryModel = modelList[0] ?? "claude-opus-4-7";
+  let primaryModel: string | null = modelList[0] ?? null;
   let primaryCount = 0;
   for (const [m, n] of models) {
     if (n > primaryCount) {
@@ -261,18 +300,23 @@ export function parseSession(transcriptPath: string): SessionStats {
     cacheWrite5mTokens: cacheWrite5m,
     cacheWrite1hTokens: cacheWrite1h,
     totalTokens,
-    credits: creditsFromTokens(totalTokens),
+    paidTokens,
     cacheHitRatio,
+    cacheSaveRate,
     costUsd,
+    costBreakdown,
+    savedUsd,
     toolCounts,
     totalToolCalls,
     dominantTool,
     subagents,
     filesEdited,
+    editCallCount,
     bashCommands,
     userPrompts: promptTexts.length,
     assistantMessages,
     avgPromptLen,
+    firstPrompt: firstPrompt || null,
     slashCommands: [...slashCommands],
     mostUsedWord,
     clears: rage.clears,

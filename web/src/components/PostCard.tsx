@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Post, Comment } from "../types.ts";
 import { api } from "../api.ts";
-import { timeAgo, fmtCost, fmtDuration } from "../format.ts";
+import { timeAgo, fmtCost, fmtDuration, fmtTokens, formatModel } from "../format.ts";
 
 interface CulturalReact {
   dbKey: string;
@@ -59,38 +59,20 @@ export function renderAvatar(avatar: string, handle: string) {
   );
 }
 
-function fmtModelElite(model: string): string {
-  if (!model) return "Sonnet 4";
-  const m = model.toLowerCase();
-  if (m.includes("opus-4-7")) return "Opus 4.7";
-  if (m.includes("opus")) return "Opus 4.7";
-  if (m.includes("sonnet-4") || (m.includes("sonnet") && m.includes("4"))) return "Sonnet 4";
-  if (m.includes("sonnet")) return "Sonnet 4";
-  if (m.includes("gemini-3.5") || (m.includes("gemini") && m.includes("3.5"))) return "Gemini 3.5 Pro";
-  if (m.includes("gemini")) return "Gemini 3.5 Pro";
-  if (m.includes("deepseek-r1") || m.includes("r1")) return "DeepSeek R1";
-  if (m.includes("o3")) return "o3";
-  return "Sonnet 4";
-}
-
-function splitTokens(n: number) {
-  if (n >= 1_000_000_000) return { main: (n / 1_000_000_000).toFixed(1), unit: "B" };
-  if (n >= 1_000_000) return { main: (n / 1_000_000).toFixed(1), unit: "M" };
-  if (n >= 1_000) return { main: (n / 1_000).toFixed(1), unit: "k" };
-  return { main: String(n), unit: "" };
-}
-
 export function PostCard({
   post,
   index = 0,
   onPublish,
+  onDelete,
   isPersonalBest = false,
 }: {
   post: Post;
   index?: number;
   onPublish?: (id: string) => void;
+  onDelete?: (id: string) => void;
   isPersonalBest?: boolean;
 }) {
+  const [showMenu, setShowMenu] = useState(false);
   const [reactions, setReactions] = useState<Record<string, number>>(() => {
     const raw = post.reactions ?? {};
     const mapped: Record<string, number> = {};
@@ -113,24 +95,24 @@ export function PostCard({
 
   async function toggleReact(dbKey: string) {
     const active = myReactions.includes(dbKey);
+    const delta: 1 | -1 = active ? -1 : 1;
     setMyReactions(prev => active ? prev.filter(k => k !== dbKey) : [...prev, dbKey]);
     setReactions(prev => ({
       ...prev,
-      [dbKey]: Math.max(0, (prev[dbKey] ?? 0) + (active ? -1 : 1))
+      [dbKey]: Math.max(0, (prev[dbKey] ?? 0) + delta),
     }));
     setShowPalette(false);
-    
+
     try {
-      const res = await api.react(post.id, dbKey);
+      const res = await api.react(post.id, dbKey, delta);
       const mapped: Record<string, number> = {};
       Object.entries(res.reactions).forEach(([k, v]) => {
         const mappedKey = DB_REACTION_MAP[k] || k;
         mapped[mappedKey] = (mapped[mappedKey] ?? 0) + v;
       });
-      setReactions(prev => ({
-        ...prev,
-        ...mapped
-      }));
+      // Replace the local map with the server's authoritative one so removed entries
+      // (count back to zero on the server) disappear from the chip row.
+      setReactions(mapped);
     } catch {
       // Keep optimistic values
     }
@@ -165,17 +147,22 @@ export function PostCard({
 
   const s = post.stats;
 
-  // Build compact flowing stats
+  const inputTokens = s.inputTokens ?? 0;
+  const outputTokens = s.outputTokens ?? 0;
+  // % of would-be cost that caching eliminated — varies meaningfully across sessions,
+  // unlike cacheHitRatio which saturates at ~100% after a few turns.
+  const saveRatePct = Math.round((s.cacheSaveRate ?? 0) * 100);
+
+  // Lower row of compact stats. Spent + Output are already heroes, so they're omitted.
+  // Input tokens lives here (demoted from the hero, but still front-of-card).
   const statParts: string[] = [];
-  if (s.costUsd > 0) statParts.push(`${fmtCost(s.costUsd)} spent`);
+  statParts.push(`${fmtTokens(inputTokens)} input`);
+  if (saveRatePct > 0) statParts.push(`${saveRatePct}% saved by cache`);
   if (s.subagents > 0) statParts.push(`${s.subagents} subagent${s.subagents === 1 ? "" : "s"}`);
   if (s.userPrompts > 0) statParts.push(`${s.userPrompts} prompt${s.userPrompts === 1 ? "" : "s"}`);
   if (s.dominantTool) statParts.push(`${s.dominantTool} tool`);
   if (s.filesEdited > 0) statParts.push(`${s.filesEdited} file${s.filesEdited === 1 ? "" : "s"}`);
   if (s.bashCommands > 0) statParts.push(`${s.bashCommands} CLI command${s.bashCommands === 1 ? "" : "s"}`);
-  if (s.cacheHitRatio > 0) statParts.push(`${Math.round(s.cacheHitRatio * 100)}% cache`);
-
-  const { main, unit } = splitTokens(s.totalTokens);
 
   const score = post.score ?? 0;
   const scoreBg = score >= 7
@@ -195,29 +182,56 @@ export function PostCard({
               <span className="project">{post.project}</span>
               <span className="sep">·</span>
               <span>{timeAgo(post.createdAt)}</span>
+              {s.durationMs > 0 && (
+                <>
+                  <span className="sep">·</span>
+                  <span>{fmtDuration(s.durationMs)} active</span>
+                </>
+              )}
             </div>
           </div>
         </div>
-        <div className="card-head-right">
-          <span>{s.durationMs ? fmtDuration(s.durationMs) : "0m"}</span>
-          <br />
-          <span>{fmtModelElite(s.primaryModel)}</span>
-        </div>
+        {onDelete && (
+          <div className="card-menu">
+            <button
+              className="card-menu-trigger"
+              onClick={() => setShowMenu((v) => !v)}
+              aria-label="Post actions"
+              title="Post actions"
+            >⋯</button>
+            {showMenu && (
+              <div className="card-menu-popover" onMouseLeave={() => setShowMenu(false)}>
+                <button
+                  className="card-menu-item danger"
+                  onClick={() => {
+                    setShowMenu(false);
+                    if (window.confirm("Delete this post? This can't be undone.")) {
+                      onDelete(post.id);
+                    }
+                  }}
+                >Delete post</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {post.isDraft && (
         <div className="draft-flag">Draft</div>
       )}
 
-      {/* GIANT CENTERPIECE TOKEN DISPLAY */}
-      <div className="hero-credits">
-        <div className="value">
-          {main}
-          <span className="unit">{unit}</span>
+      {/* HERO — twin headlines: output tokens (what Claude produced) and $ spent. */}
+      <div className="hero-stats hero-stats--twin">
+        <div className="hero-stat hero-stat--primary">
+          <div className="hero-stat-value">{fmtTokens(outputTokens)}</div>
+          <div className="hero-stat-label">
+            Output tokens
+            {isPersonalBest && <span className="pr-dot" />}
+          </div>
         </div>
-        <div className="credits-label-container">
-          <span className="credits-label">credits burned</span>
-          {isPersonalBest && <span className="pr-dot" />}
+        <div className="hero-stat hero-stat--primary highlight">
+          <div className="hero-stat-value">{fmtCost(s.costUsd)}</div>
+          <div className="hero-stat-label">Spent</div>
         </div>
       </div>
 
@@ -233,10 +247,12 @@ export function PostCard({
         </div>
       )}
 
-      {/* UNIFIED STORY / SUMMARY & ROAST */}
+      {/* MODEL-VOICED REVIEW — written by Haiku 4.5 (the scorer) in the personality of
+          whichever Claude family the developer actually used this session. The model name
+          prefix is rendered by the UI; the LLM output is just the two-clause caption. */}
       <div className="session-story">
-        <span className="session-title">{post.title}</span>
-        {post.review && <span className="session-roast"> — {post.review}</span>}
+        <span className="session-model-prefix">{formatModel(s.primaryModel) || "Claude"}:</span>
+        <span className="session-review">{post.review}</span>
       </div>
 
       {/* CUSTOM MONOCHROMATIC MICRO-REACTIONS */}
@@ -260,8 +276,15 @@ export function PostCard({
 
         {/* Reaction Popover container */}
         <div className="react-palette-container">
-          <button className="react-btn add-react" onClick={() => setShowPalette((v) => !v)}>
-            +
+          <button
+            className="react-btn add-react"
+            onClick={() => setShowPalette((v) => !v)}
+            aria-label="Add reaction"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
           {showPalette && (
             <div className="react-palette">

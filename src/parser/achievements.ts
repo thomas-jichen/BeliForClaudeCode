@@ -60,8 +60,8 @@ const CATALOG: BadgeDef[] = [
     id: "cache-freeloader",
     label: "Cache Freeloader",
     emoji: "🧊",
-    blurb: "Most of the context was free cache reads.",
-    test: (s) => s.cacheHitRatio >= 0.8 && s.totalTokens > 50_000,
+    blurb: "Caching saved most of what this session would have cost.",
+    test: (s) => s.cacheSaveRate >= 0.6 && s.costUsd >= 0.5,
   },
   {
     id: "bash-bro",

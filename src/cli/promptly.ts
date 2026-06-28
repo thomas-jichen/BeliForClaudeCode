@@ -93,9 +93,11 @@ async function cmdServe(argv: string[]) {
   const portArg = argv.indexOf("--port");
   const port = portArg !== -1 ? Number(argv[portArg + 1]) : DEFAULT_PORT;
   const rebuild = argv.includes("--rebuild");
-  ensureWebBuilt(rebuild);
+  const skipBuild = argv.includes("--no-build") || process.env.PROMPTLY_NO_BUILD === "1";
+  const skipOpen = argv.includes("--no-open") || process.env.PROMPTLY_NO_OPEN === "1";
+  if (!skipBuild) ensureWebBuilt(rebuild);
   await startServer(port);
-  openBrowser(`http://localhost:${port}`);
+  if (!skipOpen) openBrowser(`http://localhost:${port}`);
 }
 
 async function main() {

@@ -22,6 +22,12 @@ function readStdin(): Promise<string> {
 }
 
 async function main() {
+  // Self-loop guard: when the scorer's own `claude -p` invocation ends, Claude Code
+  // fires this hook. Its env still carries PROMPTLY_SCORING=1 (set by score.ts on the
+  // spawn). Bail without spawning the worker — otherwise we'd parse the scoring
+  // transcript and score it, which would fire another `claude -p`, and so on forever.
+  if (process.env.PROMPTLY_SCORING === "1") return;
+
   const raw = await readStdin();
   let payload: any = {};
   try {

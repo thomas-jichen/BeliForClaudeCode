@@ -1,5 +1,6 @@
 import type { Post, Profile } from "../types.ts";
 import { PostCard } from "./PostCard.tsx";
+import { api } from "../api.ts";
 
 const FRIENDS_HANDLES = new Set(["vivan", "priya", "marco_dev", "neon_owl", "priya.codes"]);
 
@@ -50,13 +51,23 @@ export function Feed({
     }
   });
 
+  async function handleDelete(id: string) {
+    try {
+      await api.deletePost(id);
+    } catch {
+      /* keep UI in sync regardless */
+    }
+    onRefresh();
+  }
+
   return (
     <div className="feed">
       {filteredPosts.map((p, i) => (
-        <PostCard 
-          key={p.id} 
-          post={p} 
-          index={i} 
+        <PostCard
+          key={p.id}
+          post={p}
+          index={i}
+          onDelete={handleDelete}
           isPersonalBest={p.stats?.totalTokens > 0 && p.stats?.totalTokens === maxTokensByHandle[p.handle]}
         />
       ))}

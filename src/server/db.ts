@@ -15,7 +15,7 @@ interface Store {
   posts: Post[];
 }
 
-const DEFAULT_PROFILE: Profile = { handle: "you", name: "Creative Technologist", avatar: "YO", autoShareMinTokens: 1_000_000 };
+const DEFAULT_PROFILE: Profile = { handle: "you", name: "Creative Technologist", avatar: "YO", autoShareMinTokens: 5_000 };
 
 let store: Store = { profile: { ...DEFAULT_PROFILE }, posts: [] };
 
@@ -51,23 +51,33 @@ function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// Insert a post. Server is the source of truth for id / createdAt / reactions.
+// Insert a post. Server owns ONLY id and postedAt — session truth (createdAt, stats, model)
+// is passed through untouched. This is what guarantees a session from weeks ago doesn't
+// suddenly read as "<1m ago" just because the outbox got drained today.
 export function addPost(input: Post): Post {
+  const now = new Date().toISOString();
   const post: Post = {
     ...input,
     id: uid(),
-    createdAt: new Date().toISOString(),
-    reactions: {},
+    postedAt: now,
+    reactions: input.reactions ?? {},
+    comments: input.comments ?? [],
   };
   store.posts.unshift(post);
   persist();
   return post;
 }
 
+// Sort order: most-recent "moment that put it in front of you" first. For published posts
+// that's publishedAt; otherwise the session's own createdAt. Never lie about createdAt itself.
+function feedTime(p: Post): number {
+  return +new Date(p.publishedAt ?? p.postedAt ?? p.createdAt);
+}
+
 export function listFeed(): Post[] {
   return store.posts
     .filter((p) => !p.isDraft)
-    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    .sort((a, b) => feedTime(b) - feedTime(a));
 }
 
 export function listDrafts(): Post[] {
@@ -84,15 +94,29 @@ export function publishPost(id: string): Post | undefined {
   const p = getPost(id);
   if (!p) return undefined;
   p.isDraft = false;
-  p.createdAt = new Date().toISOString(); // surface at top of feed when published
+  p.publishedAt = new Date().toISOString(); // surface at top of feed, but never rewrite createdAt
   persist();
   return p;
 }
 
-export function reactToPost(id: string, emoji: string): Record<string, number> | undefined {
+export function deletePost(id: string): boolean {
+  const before = store.posts.length;
+  store.posts = store.posts.filter((p) => p.id !== id);
+  if (store.posts.length === before) return false;
+  persist();
+  return true;
+}
+
+export function reactToPost(
+  id: string,
+  emoji: string,
+  delta: number = 1,
+): Record<string, number> | undefined {
   const p = getPost(id);
   if (!p) return undefined;
-  p.reactions[emoji] = (p.reactions[emoji] ?? 0) + 1;
+  const next = Math.max(0, (p.reactions[emoji] ?? 0) + delta);
+  if (next === 0) delete p.reactions[emoji];
+  else p.reactions[emoji] = next;
   persist();
   return p.reactions;
 }

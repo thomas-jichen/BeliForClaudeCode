@@ -15,14 +15,18 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(p),
     }).then((r) => j<Profile>(r)),
-  react: (id: string, emoji: string) =>
+  react: (id: string, emoji: string, delta: 1 | -1 = 1) =>
     fetch(`/api/posts/${id}/react`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ emoji }),
+      body: JSON.stringify({ emoji, delta }),
     }).then((r) => j<{ reactions: Record<string, number> }>(r)),
   publish: (id: string) =>
     fetch(`/api/posts/${id}/publish`, { method: "POST" }).then((r) => j<Post>(r)),
+  deletePost: (id: string) =>
+    fetch(`/api/posts/${id}`, { method: "DELETE" }).then((r) => {
+      if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+    }),
   addComment: (id: string, text: string, handle: string, avatar: string) =>
     fetch(`/api/posts/${id}/comments`, {
       method: "POST",

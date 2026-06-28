@@ -7,11 +7,16 @@ export interface Badge {
 
 export interface PostStats {
   costUsd: number;
+  savedUsd: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
-  credits: number;
+  paidTokens: number;
+  cacheReadTokens: number;
   subagents: number;
   durationMs: number;
   filesEdited: number;
+  editCallCount: number;
   bashCommands: number;
   totalToolCalls: number;
   dominantTool: string | null;
@@ -19,10 +24,17 @@ export interface PostStats {
   interruptions: number;
   clears: number;
   cacheHitRatio: number;
+  cacheSaveRate: number;
   userPrompts: number;
   peakHour: number;
   isNightOwl: boolean;
-  primaryModel: string;
+  primaryModel: string | null;
+}
+
+export interface PostScoring {
+  source: "llm" | "fallback";
+  model: string;
+  promptSent: string;
 }
 
 export interface Comment {
@@ -42,11 +54,14 @@ export interface Post {
   sessionId: string;
   score: number;
   review: string;
+  scoring?: PostScoring;
   statlines: string[];
   stats: PostStats;
   badges: Badge[];
   isDraft: boolean;
-  createdAt: string;
+  createdAt: string;     // session truth — when the session actually ended
+  postedAt?: string;     // server stamp — when post hit the feed
+  publishedAt?: string;  // server stamp — when a draft was published
   reactions: Record<string, number>;
   comments?: Comment[];
 }

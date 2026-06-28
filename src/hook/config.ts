@@ -5,14 +5,14 @@ export interface PromptlyConfig {
   handle: string;
   avatar: string; // emoji
   backendUrl: string;
-  autoShareMinTokens: number; // sessions below this many total tokens are saved as drafts
+  autoShareMinTokens: number; // sessions below this many OUTPUT tokens are saved as drafts
 }
 
 export const DEFAULT_CONFIG: PromptlyConfig = {
   handle: "you",
   avatar: "🧑‍💻",
   backendUrl: DEFAULT_BACKEND,
-  autoShareMinTokens: 10_000,
+  autoShareMinTokens: 5_000,
 };
 
 export function readConfig(): PromptlyConfig {

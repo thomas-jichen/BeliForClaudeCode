@@ -14,7 +14,7 @@
     "build:web": "vite build web",
     "build": "npm run build:web",
     "dev:web": "vite web",
-    "dev": "npm run build:web && npm run server",
+    "dev": "node src/dev.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

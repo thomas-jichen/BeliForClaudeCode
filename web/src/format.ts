@@ -35,6 +35,24 @@ export function fmtDuration(ms: number): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+// Derive a friendly model label directly from the model id (no hardcoded mappings —
+// adding a new Claude family shouldn't require touching this file).
+//   claude-opus-4-8           → "Opus 4.8"
+//   claude-sonnet-4-6         → "Sonnet 4.6"
+//   claude-haiku-4-5          → "Haiku 4.5"
+//   claude-fable-5            → "Fable 5"
+//   claude-opus-4-8-20260415  → "Opus 4.8"   (trailing date suffix stripped)
+//   null / unknown shape      → ""           (don't render anything)
+export function formatModel(model: string | null | undefined): string {
+  if (!model) return "";
+  const m = model.toLowerCase();
+  const match = m.match(/^claude-(opus|sonnet|haiku|fable|mythos)-(\d+(?:-\d+)?)/);
+  if (!match) return model;
+  const family = match[1][0].toUpperCase() + match[1].slice(1);
+  const version = match[2].replace("-", ".");
+  return `${family} ${version}`;
+}
+
 // Score → CSS color, graded red(low) → amber → acid-lime(high).
 export function scoreColor(score: number): string {
   if (score >= 8.5) return "var(--acid)";

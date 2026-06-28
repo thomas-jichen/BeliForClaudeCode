@@ -26,6 +26,19 @@ export function fmtTokens(n: number): string {
   return String(n);
 }
 
+// Derive a friendly model label from a Claude model id (e.g. "claude-opus-4-8" → "Opus 4.8").
+// Returns "" if the id can't be parsed. Mirrors web/src/format.ts:formatModel so the
+// worker's scoring prompt names the model the same way the UI labels it on the card.
+export function formatModel(model: string | null | undefined): string {
+  if (!model) return "";
+  const m = model.toLowerCase();
+  const match = m.match(/^claude-(opus|sonnet|haiku|fable|mythos)-(\d+(?:-\d+)?)/);
+  if (!match) return model;
+  const family = match[1][0].toUpperCase() + match[1].slice(1);
+  const version = match[2].replace("-", ".");
+  return `${family} ${version}`;
+}
+
 export function fmtHour(h: number): string {
   const ampm = h < 12 ? "am" : "pm";
   const hr = h % 12 === 0 ? 12 : h % 12;

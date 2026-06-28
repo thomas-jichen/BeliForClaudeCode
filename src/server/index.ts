@@ -9,14 +9,16 @@ import {
   listFeed,
   listDrafts,
   publishPost,
+  deletePost,
   reactToPost,
   addCommentToPost,
   ingestOutbox,
   seedIfEmpty,
 } from "./db.ts";
 import { seedPosts } from "./seed.ts";
+import { tailToStdout } from "./tail.ts";
 import { writeConfig } from "../hook/config.ts";
-import { DEFAULT_PORT } from "../shared/paths.ts";
+import { DEFAULT_PORT, WORKER_LOG } from "../shared/paths.ts";
 import type { Post } from "../shared/post.ts";
 
 const WEB_DIST = join(import.meta.dirname, "../../web/dist");
@@ -62,8 +64,21 @@ export function createApp() {
       res.status(400).json({ error: "invalid post" });
       return;
     }
+    if (typeof body.createdAt !== "string" || !body.createdAt) {
+      res.status(400).json({ error: "createdAt (session end time) required" });
+      return;
+    }
     const post = addPost(body);
     res.status(201).json(post);
+  });
+
+  app.delete("/api/posts/:id", (req, res) => {
+    const ok = deletePost(req.params.id);
+    if (!ok) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    res.status(204).end();
   });
 
   app.post("/api/posts/:id/publish", (req, res) => {
@@ -81,7 +96,10 @@ export function createApp() {
       res.status(400).json({ error: "emoji required" });
       return;
     }
-    const reactions = reactToPost(req.params.id, emoji);
+    // delta = +1 to add, -1 to remove (toggle off). Anything else falls back to +1.
+    const rawDelta = Number(req.body?.delta);
+    const delta = rawDelta === -1 ? -1 : 1;
+    const reactions = reactToPost(req.params.id, emoji, delta);
     if (!reactions) {
       res.status(404).json({ error: "not found" });
       return;
@@ -144,7 +162,9 @@ export function startServer(port = DEFAULT_PORT): Promise<void> {
     const app = createApp();
     app.listen(port, () => {
       if (ingested > 0) console.log(`📥 ingested ${ingested} queued post(s) from outbox`);
-      console.log(`\n  🟢 Promptly running → http://localhost:${port}\n`);
+      console.log(`\n  🟢 Promptly running → http://localhost:${port}`);
+      console.log(`  📜 streaming worker log (${WORKER_LOG}) — every session end will print here:\n`);
+      tailToStdout(WORKER_LOG);
       resolve();
     });
   });

@@ -5,19 +5,19 @@ interface LeaderboardItem {
   rank: number;
   handle: string;
   role: string;
-  creditsVal: number;
+  outputTokens: number;
   avg: string;
   trend: string;
   you?: boolean;
 }
 
 const STATIC_LEADERS: LeaderboardItem[] = [
-  { rank: 1, handle: "marco_dev", role: "Staff Eng · liquid-ui", creditsVal: 84_000_000, avg: "9.0", trend: "▲ 4" },
-  { rank: 2, handle: "priya.codes", role: "Platform · ledger-core", creditsVal: 71_300_000, avg: "8.6", trend: "▲ 1" },
-  { rank: 3, handle: "yuki_dev", role: "Creative Technologist", creditsVal: 38_400_000, avg: "8.7", trend: "▲ 2", you: true },
-  { rank: 4, handle: "tobias_k", role: "Infra · render-farm", creditsVal: 33_100_000, avg: "7.4", trend: "▼ 1" },
-  { rank: 5, handle: "mei.builds", role: "Product · calm-notes", creditsVal: 27_800_000, avg: "8.1", trend: "▲ 3" },
-  { rank: 6, handle: "neon_owl", role: "Nights & weekends", creditsVal: 19_200_000, avg: "6.5", trend: "▼ 2" },
+  { rank: 1, handle: "marco_dev", role: "Staff Eng · liquid-ui", outputTokens: 3_240_000, avg: "9.0", trend: "▲ 4" },
+  { rank: 2, handle: "priya.codes", role: "Platform · ledger-core", outputTokens: 2_810_000, avg: "8.6", trend: "▲ 1" },
+  { rank: 3, handle: "yuki_dev", role: "Creative Technologist", outputTokens: 1_440_000, avg: "8.7", trend: "▲ 2", you: true },
+  { rank: 4, handle: "tobias_k", role: "Infra · render-farm", outputTokens: 1_280_000, avg: "7.4", trend: "▼ 1" },
+  { rank: 5, handle: "mei.builds", role: "Product · calm-notes", outputTokens: 1_060_000, avg: "8.1", trend: "▲ 3" },
+  { rank: 6, handle: "neon_owl", role: "Nights & weekends", outputTokens: 720_000, avg: "6.5", trend: "▼ 2" },
 ];
 
 function fmtTokensCompact(n: number): string {
@@ -39,8 +39,8 @@ export function Leaderboard({
   const userRole = profile?.name || "Creative Technologist";
   
   const userPosts = posts ? posts.filter((p) => p.handle === userHandle && !p.isDraft) : [];
-  const userDynamicBurn = userPosts.reduce((acc, p) => acc + (p.stats?.totalTokens || 0), 0);
-  const userWeeklyBurn = Math.max(38_400_000, userDynamicBurn);
+  const userDynamicOutput = userPosts.reduce((acc, p) => acc + (p.stats?.outputTokens ?? 0), 0);
+  const userWeeklyOutput = Math.max(1_440_000, userDynamicOutput);
 
   const leaders = STATIC_LEADERS.map((leader) => {
     if (leader.you) {
@@ -48,13 +48,13 @@ export function Leaderboard({
         ...leader,
         handle: userHandle,
         role: userRole,
-        creditsVal: userWeeklyBurn,
+        outputTokens: userWeeklyOutput,
       };
     }
     return leader;
-  }).sort((a, b) => b.creditsVal - a.creditsVal);
+  }).sort((a, b) => b.outputTokens - a.outputTokens);
 
-  // Assign ranks based on sorted credits
+  // Rank by sorted output tokens
   leaders.forEach((l, idx) => {
     l.rank = idx + 1;
   });
@@ -64,7 +64,7 @@ export function Leaderboard({
       <div className="leaderboard-card">
         <div className="leaderboard-header-row">
           <span className="leaderboard-header-label">Rank · Builder</span>
-          <span className="leaderboard-header-label">Credits this week</span>
+          <span className="leaderboard-header-label">Output tokens this week</span>
         </div>
         
         {leaders.map((row) => {
@@ -106,7 +106,7 @@ export function Leaderboard({
 
               <div className="leaderboard-row-right">
                 <div className="leaderboard-stats">
-                  <div className="leaderboard-credits">{fmtTokensCompact(row.creditsVal)}</div>
+                  <div className="leaderboard-tokens">{fmtTokensCompact(row.outputTokens)}</div>
                   <div className="leaderboard-avg">avg {row.avg}</div>
                 </div>
                 <div className={`leaderboard-trend ${isUp ? "up" : "down"}`}>

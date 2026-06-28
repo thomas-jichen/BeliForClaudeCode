@@ -4,12 +4,14 @@ import { api } from "../api.ts";
 import { PostCard, renderAvatar } from "./PostCard.tsx";
 import { fmtCost, fmtDuration, fmtTokens } from "../format.ts";
 
+// Thresholds gate on OUTPUT tokens (what Claude actually generated this slice). Output
+// is the headline metric on the card, so it's also the natural scale here.
 const PRESETS = [
   { label: "Everything", value: 0 },
-  { label: "100k+", value: 100_000 },
-  { label: "1M+", value: 1_000_000 },
-  { label: "10M+", value: 10_000_000 },
-  { label: "50M+", value: 50_000_000 },
+  { label: "5k+", value: 5_000 },
+  { label: "20k+", value: 20_000 },
+  { label: "50k+", value: 50_000 },
+  { label: "200k+", value: 200_000 },
 ];
 
 const ACHIEVEMENTS = [
@@ -175,6 +177,16 @@ export function Profile({
     onRefresh();
   };
 
+  const deletePost = async (id: string) => {
+    try {
+      await api.deletePost(id);
+    } catch {
+      /* fall through to refresh anyway */
+    }
+    setDrafts((d) => d.filter((p) => p.id !== id));
+    onRefresh();
+  };
+
   const handleNameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleSaveName();
@@ -207,10 +219,11 @@ export function Profile({
   // Calculate dynamic summary metrics based on posts
   const userPosts = posts ? posts.filter((p) => p.handle === profile.handle && !p.isDraft) : [];
   
-  // Total Burn: base seed + dynamic posts
-  const totalDraftsTokens = drafts.reduce((acc, p) => acc + (p.stats?.totalTokens || 0), 0);
-  const userDynamicBurn = userPosts.reduce((acc, p) => acc + (p.stats?.totalTokens || 0), 0);
-  const totalBurned = 124_800_000 + userDynamicBurn + totalDraftsTokens;
+  // Total Output: base seed + dynamic posts. Sums output tokens specifically (the
+  // headline metric on each card).
+  const totalDraftsOutput = drafts.reduce((acc, p) => acc + (p.stats?.outputTokens ?? 0), 0);
+  const userDynamicOutput = userPosts.reduce((acc, p) => acc + (p.stats?.outputTokens ?? 0), 0);
+  const totalOutput = 4_800_000 + userDynamicOutput + totalDraftsOutput;
 
   // Average score
   const totalScore = userPosts.reduce((acc, p) => acc + (p.score || 0), 0);
@@ -330,8 +343,8 @@ export function Profile({
         {/* Athlete summaries */}
         <div className="profile-stats-row">
           <div className="profile-stat">
-            <span className="profile-stat-value">{fmtTokens(totalBurned)}</span>
-            <span className="profile-stat-label">Total Burn</span>
+            <span className="profile-stat-value">{fmtTokens(totalOutput)}</span>
+            <span className="profile-stat-label">Total Output</span>
           </div>
           <div className="profile-stat">
             <span className="profile-stat-value">14<span>d</span></span>
@@ -425,7 +438,7 @@ export function Profile({
             ) : (
               <>
                 Only sessions above{" "}
-                <span className="threshold-readout">{fmtTokens(threshold)} tokens</span> auto-post.
+                <span className="threshold-readout">{fmtTokens(threshold)} output tokens</span> auto-post.
                 Smaller ones are saved as drafts you can publish below.
               </>
             )}
@@ -439,10 +452,11 @@ export function Profile({
           <div className="profile-sessions-header">Your sessions</div>
           <div className="feed">
             {userPosts.map((p, i) => (
-              <PostCard 
-                key={p.id} 
-                post={p} 
-                index={i} 
+              <PostCard
+                key={p.id}
+                post={p}
+                index={i}
+                onDelete={deletePost}
               />
             ))}
           </div>
@@ -463,9 +477,10 @@ export function Profile({
                   </span>
                   <button className="publish-btn" onClick={() => publish(p.id)}>Publish</button>
                 </div>
-                <PostCard 
-                  post={p} 
-                  index={i} 
+                <PostCard
+                  post={p}
+                  index={i}
+                  onDelete={deletePost}
                 />
               </div>
             ))}

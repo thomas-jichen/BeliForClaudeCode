@@ -9,7 +9,7 @@ import { renderAvatar } from "./components/PostCard.tsx";
 export type Tab = "feed" | "profile" | "leaderboard";
 export type Scope = "friends" | "global";
 
-function splitWeeklyCredits(n: number) {
+function splitWeeklyTokens(n: number) {
   if (n >= 1_000_000_000) return { main: (n / 1_000_000_000).toFixed(1), unit: "B" };
   if (n >= 1_000_000) return { main: (n / 1_000_000).toFixed(1), unit: "M" };
   if (n >= 1_000) return { main: (n / 1_000).toFixed(1), unit: "k" };
@@ -30,12 +30,6 @@ export function App() {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [profile, setProfile] = useState<ProfileT | null>(null);
   
-  // Pick a random Japandi background image on mount
-  const [bgImage] = useState(() => {
-    const idx = Math.floor(Math.random() * 4) + 1;
-    return `japandi_${idx}.png`;
-  });
-
   const loadData = () => {
     api.feed().then(setPosts).catch(() => setPosts([]));
     api.profile().then(setProfile).catch(() => {});
@@ -56,11 +50,11 @@ export function App() {
   const userHandle = profile?.handle || "yuki_dev";
   const userPostsThisWeek = posts ? posts.filter(p => p.handle === userHandle && !p.isDraft) : [];
   
-  const rawWeeklyCredits = userPostsThisWeek.reduce((acc, p) => acc + (p.stats?.totalTokens || 0), 0);
-  const weeklyCreditsVal = rawWeeklyCredits || 38_400_000;
+  const rawWeeklyOutput = userPostsThisWeek.reduce((acc, p) => acc + (p.stats?.outputTokens ?? 0), 0);
+  const weeklyOutputVal = rawWeeklyOutput || 1_440_000;
   const weeklySessions = userPostsThisWeek.length || 9;
 
-  const { main: weeklyCreditsMain, unit: weeklyCreditsUnit } = splitWeeklyCredits(weeklyCreditsVal);
+  const { main: weeklyOutputMain, unit: weeklyOutputUnit } = splitWeeklyTokens(weeklyOutputVal);
 
   const screenTitle = tab === "feed" ? "Feed" : tab === "profile" ? "Profile" : "Leaderboard";
   const screenSub = tab === "feed"
@@ -70,7 +64,7 @@ export function App() {
     : "Who burned the most this week";
 
   return (
-    <div className="app-layout" style={{ "--bg-image": `url(/images/${bgImage})` } as React.CSSProperties}>
+    <div className="app-layout" style={{ "--bg-image": "url(/images/japandi_bg.png?v=2)" } as React.CSSProperties}>
       <div className="app-background" />
       <div className="app-overlay" />
 
@@ -127,10 +121,10 @@ export function App() {
         <div className="sidebar-widget">
           <div className="sidebar-widget-label">This week</div>
           <div className="sidebar-widget-value">
-            {weeklyCreditsMain}<span>{weeklyCreditsUnit}</span>
+            {weeklyOutputMain}<span>{weeklyOutputUnit}</span>
           </div>
           <div className="sidebar-widget-sub">
-            credits · {weeklySessions} session{weeklySessions === 1 ? "" : "s"}
+            output tokens · {weeklySessions} session{weeklySessions === 1 ? "" : "s"}
           </div>
         </div>
 

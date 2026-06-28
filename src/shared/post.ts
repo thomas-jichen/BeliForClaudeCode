@@ -5,11 +5,16 @@ import { fmtInt, fmtCost, fmtDuration, fmtTokens, fmtHour } from "./format.ts";
 // Compact, share-safe stats stored on a post (no prompt/code text).
 export interface PostStats {
   costUsd: number;
-  totalTokens: number;
-  credits: number;
+  savedUsd: number;        // $ saved by cache reads (vs fresh-input billing)
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;     // input + output + cacheRead + cacheWrite (kept for cache-ratio math)
+  paidTokens: number;      // input + output + cacheWrite (the cost-driving total)
+  cacheReadTokens: number;
   subagents: number;
   durationMs: number;
   filesEdited: number;
+  editCallCount: number;
   bashCommands: number;
   totalToolCalls: number;
   dominantTool: string | null;
@@ -17,10 +22,18 @@ export interface PostStats {
   interruptions: number;
   clears: number;
   cacheHitRatio: number;
+  cacheSaveRate: number;
   userPrompts: number;
   peakHour: number;
   isNightOwl: boolean;
-  primaryModel: string;
+  primaryModel: string | null;
+}
+
+// Provenance for the score/review so the card can show what produced it.
+export interface PostScoring {
+  source: "llm" | "fallback";
+  model: string;       // e.g. "claude-haiku-4-5", or "deterministic" for the fallback
+  promptSent: string;  // exact stats text sent to the LLM
 }
 
 export interface Comment {
@@ -47,11 +60,14 @@ export interface Post {
   sessionId: string;
   score: number; // 0-10
   review: string; // one-line roast/review
+  scoring?: PostScoring; // how the score/review was produced (LLM model + raw prompt)
   statlines: string[]; // punchy stat-format callouts
   stats: PostStats;
   badges: Badge[];
   isDraft: boolean;
-  createdAt: string; // ISO
+  createdAt: string;     // session truth — when the session actually ended
+  postedAt?: string;     // server stamp — when the post hit the feed
+  publishedAt?: string;  // server stamp — when a draft was published (if applicable)
   reactions: Record<string, number>;
   comments?: Comment[];
 }
@@ -59,11 +75,16 @@ export interface Post {
 export function toPostStats(s: SessionStats): PostStats {
   return {
     costUsd: s.costUsd,
+    savedUsd: s.savedUsd,
+    inputTokens: s.inputTokens,
+    outputTokens: s.outputTokens,
     totalTokens: s.totalTokens,
-    credits: s.credits,
+    paidTokens: s.paidTokens,
+    cacheReadTokens: s.cacheReadTokens,
     subagents: s.subagents,
     durationMs: s.durationMs,
     filesEdited: s.filesEdited,
+    editCallCount: s.editCallCount,
     bashCommands: s.bashCommands,
     totalToolCalls: s.totalToolCalls,
     dominantTool: s.dominantTool,
@@ -71,6 +92,7 @@ export function toPostStats(s: SessionStats): PostStats {
     interruptions: s.interruptions,
     clears: s.clears,
     cacheHitRatio: s.cacheHitRatio,
+    cacheSaveRate: s.cacheSaveRate,
     userPrompts: s.userPrompts,
     peakHour: s.peakHour,
     isNightOwl: s.isNightOwl,
@@ -89,8 +111,8 @@ export function buildStatlines(s: SessionStats): string[] {
 
   const headline =
     s.subagents > 0
-      ? `🔥 burned ${fmtInt(s.totalTokens)} tokens with ${s.subagents} subagent${s.subagents === 1 ? "" : "s"}`
-      : `🔥 burned ${fmtInt(s.totalTokens)} tokens`;
+      ? `🔥 ${fmtInt(s.outputTokens)} output tokens with ${s.subagents} subagent${s.subagents === 1 ? "" : "s"}`
+      : `🔥 ${fmtInt(s.outputTokens)} output tokens`;
   lines.push({ line: headline, weight: 100 });
 
   if (s.costUsd >= 0.01) {
@@ -108,8 +130,8 @@ export function buildStatlines(s: SessionStats): string[] {
   if (s.isNightOwl) {
     lines.push({ line: `🦉 peak grind at ${fmtHour(s.peakHour)}`, weight: 65 });
   }
-  if (s.cacheHitRatio >= 0.8 && s.totalTokens > 50_000) {
-    lines.push({ line: `🧊 ${Math.round(s.cacheHitRatio * 100)}% of tokens were free cache reads`, weight: 50 });
+  if (s.cacheSaveRate >= 0.5) {
+    lines.push({ line: `🧊 ${Math.round(s.cacheSaveRate * 100)}% of cost saved by cache`, weight: 50 });
   }
   if (s.durationMs > 0) {
     lines.push({ line: `⏱️ ${fmtDuration(s.durationMs)} of active coding`, weight: 45 });
@@ -146,6 +168,7 @@ export function buildPost(args: {
   badges: Badge[];
   score: number;
   review: string;
+  scoring?: PostScoring;
   isDraft: boolean;
 }): Post {
   return {
@@ -157,11 +180,13 @@ export function buildPost(args: {
     sessionId: args.stats.sessionId,
     score: args.score,
     review: args.review,
+    scoring: args.scoring,
     statlines: buildStatlines(args.stats),
     stats: toPostStats(args.stats),
     badges: args.badges,
     isDraft: args.isDraft,
-    createdAt: new Date().toISOString(),
+    // The session's truth — when it actually ended. Server must not overwrite this.
+    createdAt: args.stats.endTime ?? new Date().toISOString(),
     reactions: {},
     comments: [],
   };

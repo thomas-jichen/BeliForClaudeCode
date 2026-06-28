@@ -17,7 +17,7 @@ console.log("project:", s.project, "| branch:", s.gitBranch);
 console.log("model:", s.primaryModel, "| all:", s.models);
 console.log("duration(min):", (s.durationMs / 60000).toFixed(1), "| peakHour:", s.peakHour, "| nightOwl:", s.isNightOwl);
 console.log("tokens:", { input: s.inputTokens, output: s.outputTokens, cacheRead: s.cacheReadTokens, w5: s.cacheWrite5mTokens, w1: s.cacheWrite1hTokens, total: s.totalTokens });
-console.log("credits:", s.credits.toLocaleString(), "| cacheHitRatio:", s.cacheHitRatio.toFixed(2));
+console.log("output:", s.outputTokens.toLocaleString(), "| input:", s.inputTokens.toLocaleString(), "| cacheHitRatio:", s.cacheHitRatio.toFixed(2));
 console.log("cost: $" + s.costUsd.toFixed(2), "=", rw.bigMacs.toFixed(1), "Big Macs |", rw.lattes.toFixed(1), "lattes");
 console.log("tools:", s.toolCounts);
 console.log("subagents:", s.subagents, "| filesEdited:", s.filesEdited, "| bash:", s.bashCommands, "| dominant:", s.dominantTool);
